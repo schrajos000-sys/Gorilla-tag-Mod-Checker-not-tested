@@ -1,0 +1,70 @@
+using BepInEx;
+using UnityEngine;
+using Photon.Pun;
+using System.Collections.Generic;
+
+[BepInPlugin("com.yourname.modchecker", "Ultimate Lobby Checker", "1.1.0")]
+public class ModChecker : BaseUnityPlugin
+{
+    private string notificationText = "";
+    private float notificationTimer = 0f;
+    private Dictionary<string, Vector3> lastPositions = new Dictionary<string, Vector3>();
+
+    void Update()
+    {
+        if (!PhotonNetwork.InRoom) return;
+
+        // Use GorillaParent to get all active VR Rigs
+        foreach (VRRig rig in GorillaParent.instance.vrrigs)
+        {
+            if (rig.isMyPlayer) continue; // Don't check yourself
+
+            Photon.Realtime.Player owner = rig.creator;
+            CheckLongArms(owner, rig);
+            CheckSpeedAndFly(owner, rig);
+        }
+
+        if (notificationTimer > 0) notificationTimer -= Time.deltaTime;
+    }
+
+    void CheckLongArms(Photon.Realtime.Player p, VRRig rig)
+    {
+        float dist = Vector3.Distance(rig.head.rigTarget.position, rig.rightHand.rigTarget.position);
+        if (dist > 1.6f) TriggerNotification($"{p.NickName}: LONG ARMS");
+    }
+
+    void CheckSpeedAndFly(Photon.Realtime.Player p, VRRig rig)
+    {
+        Vector3 currentPos = rig.transform.position;
+
+        if (lastPositions.ContainsKey(p.UserId))
+        {
+            float speed = Vector3.Distance(currentPos, lastPositions[p.UserId]) / Time.deltaTime;
+            
+            // 1. Speed Detection (Value > 9 is usually a boost)
+            if (speed > 12f) 
+                TriggerNotification($"{p.NickName}: SPEED BOOST");
+
+            // 2. Fly Detection (Check if they are high up and not touching ground)
+            if (currentPos.y > 5f && !rig.CheckDistanceToGround(0.5f))
+                TriggerNotification($"{p.NickName}: FLYING");
+        }
+        lastPositions[p.UserId] = currentPos;
+    }
+
+    void TriggerNotification(string message)
+    {
+        notificationText = $"[!] {message}";
+        notificationTimer = 3f;
+    }
+
+    void OnGUI()
+    {
+        if (notificationTimer > 0)
+        {
+            GUI.skin.label.fontSize = 25;
+            GUI.color = Color.red;
+            GUI.Label(new Rect(50, 50, 600, 100), notificationText);
+        }
+    }
+}
